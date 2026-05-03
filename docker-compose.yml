@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: mbds_postgres
+    environment:
+      POSTGRES_DB: mbds_absences
+      POSTGRES_USER: mbds_user
+      POSTGRES_PASSWORD: mbds_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - mbds_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mbds_user -d mbds_absences"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mbds_backend
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://mbds_user:mbds_password@postgres:5432/mbds_absences
+      JWT_SECRET: mbds_jwt_secret_2024
+      PORT: 3001
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: "587"
+      SMTP_USER: ""
+      SMTP_PASS: ""
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - mbds_network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: mbds_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - mbds_network
+    restart: unless-stopped
+
+  adminer:
+    image: adminer
+    container_name: mbds_adminer
+    ports:
+      - "8080:8080"
+    networks:
+      - mbds_network
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: mbds_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@mbds.ci
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - mbds_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  uploads_data:
+  pgadmin_data:
+
+networks:
+  mbds_network:
+    driver: bridge
